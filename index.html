@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Elephant Rescue — Ice Cream Reward</title>
+  <style>
+    :root {
+      --bg:#0b1020; --panel:#12182b; --ink:#e9eefc; --accent:#6ee7ff; --accent2:#a7f3d0; --danger:#ff6b6b; --ok:#22c55e;
+    }
+    html,body{height:100%;margin:0;background:radial-gradient(1200px 700px at 50% 10%,#1b2344 0%,#0b1020 55%,#070b17 100%);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial;color:var(--ink);}
+    #wrap{display:flex;flex-direction:column;align-items:center;gap:.75rem;padding:10px 8px 80px;}
+    header{width:min(1200px,100%);display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .title{font-weight:800;letter-spacing:.3px}
+    .hud{display:flex;gap:10px;align-items:center}
+    .pill{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px;font-size:.9rem;backdrop-filter: blur(6px)}
+
+    #gamebox{position:relative;width:min(100vw,900px);aspect-ratio:16/9;border-radius:18px;overflow:hidden;box-shadow:0 15px 40px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.06)}
+    canvas{width:100%;height:100%;display:block;image-rendering:auto;}
+
+    /* On-screen controls for mobile */
+    #controls{position:absolute;inset:auto 0 0 0;display:flex;justify-content:space-between;pointer-events:none;padding:12px}
+    .pad{pointer-events:auto;display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:4px;}
+    .btn{width:48px;height:48px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);backdrop-filter: blur(6px);display:flex;align-items:center;justify-content:center}
+    .btn:active{transform:scale(.96)}
+    .btn.big{width:72px;height:72px;border-radius:50%;font-weight:700}
+    .ghost{opacity:.35}
+
+    /* Modals */
+    .modal{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,12,24,.55);backdrop-filter: blur(6px)}
+    .card{background:var(--panel);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px 18px;box-shadow:0 10px 25px rgba(0,0,0,.35);max-width:min(680px,92%)}
+    .card h2{margin:.1rem 0 .3rem;font-size:1.4rem}
+    .card p{margin:.25rem 0 .5rem;opacity:.9}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .chip{border:1px solid rgba(255,255,255,.12);padding:6px 10px;border-radius:10px;background:rgba(255,255,255,.06)}
+    .actions{display:flex;gap:10px;margin-top:.6rem}
+    button.primary{background:linear-gradient(180deg,var(--accent),#3fb6ff);border:none;color:#001428;font-weight:800;padding:10px 14px;border-radius:12px;cursor:pointer}
+    button.secondary{background:transparent;border:1px solid rgba(255,255,255,.2);color:var(--ink);padding:10px 14px;border-radius:12px;cursor:pointer}
+
+    /* Toast */
+    #toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);padding:8px 12px;border-radius:999px;display:none}
+
+    /* Win confetti canvas sits on top while active */
+    #fx{position:absolute;inset:0;pointer-events:none}
+
+    footer{opacity:.8;font-size:.9rem}
+    a{color:#9ad7ff}
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <div class="title">🐘 Elephant Rescue — Ice Cream Reward</div>
+    <div class="hud">
+      <div id="hp" class="pill">❤️ 100</div>
+      <div id="timer" class="pill">⏱️ 00:00</div>
+      <div id="objective" class="pill">Objective: Find and rescue the baby elephant</div>
+    </div>
+  </header>
+
+  <div id="gamebox">
+    <canvas id="game" width="1280" height="720"></canvas>
+    <canvas id="fx" width="1280" height="720"></canvas>
+
+    <!-- Toast -->
+    <div id="toast">Hold E / ▶ to Rescue…</div>
+
+    <!-- Mobile Controls -->
+    <div id="controls">
+      <div class="pad" id="dpad">
+        <div></div><div class="btn" data-k="ArrowUp">▲</div><div></div>
+        <div class="btn" data-k="ArrowLeft">◀</div><div class="btn ghost">•</div><div class="btn" data-k="ArrowRight">▶</div>
+        <div></div><div class="btn" data-k="ArrowDown">▼</div><div></div>
+      </div>
+      <div class="pad" style="grid-template-columns:auto;grid-template-rows:auto;align-items:end">
+        <div class="btn big" data-k="KeyE">▶</div>
+      </div>
+    </div>
+
+    <!-- Start / GameOver / Win -->
+    <div id="start" class="modal" style="display:flex">
+      <div class="card">
+        <h2>Mission: Save the Baby Elephant</h2>
+        <p>You are the rescuer (<strong>IMT_8659</strong>). Reach the trapped baby elephant, press <b>E</b> (or tap ▶) to rescue it, then head to <strong>smw1</strong> to receive a celebratory ice cream. Avoid hazards!</p>
+        <div class="row">
+          <div class="chip">Move: WASD / Arrow Keys</div>
+          <div class="chip">Action: E</div>
+          <div class="chip">Mobile: D‑pad + ▶</div>
+        </div>
+        <div class="actions">
+          <button class="primary" onclick="Game.start()">Start</button>
+          <button class="secondary" onclick="Game.toggleMute()">Toggle Sound</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="gameover" class="modal">
+      <div class="card">
+        <h2>Game Over</h2>
+        <p>You ran out of health. Tip: Avoid the patrolling guards and spike pits. Try again!</p>
+        <div class="actions"><button class="primary" onclick="Game.reset()">Restart</button></div>
+      </div>
+    </div>
+
+    <div id="win" class="modal">
+      <div class="card">
+        <h2>Victory! Ice Cream Unlocked 🍦</h2>
+        <p>You rescued the elephant and met <strong>smw1</strong>. Enjoy your Ferrero Rocher ice cream!</p>
+        <div class="actions"><button class="primary" onclick="Game.reset()">Play Again</button></div>
+        <div style="display:flex;gap:14px;align-items:center;margin-top:10px">
+          <img src="icecream.jpg" alt="ice cream" style="height:96px;width:auto;border-radius:12px;border:1px solid rgba(255,255,255,.15)"/>
+          <div>
+            <div style="font-weight:700">Time:</div><div id="finalTime">—</div>
+            <div style="font-weight:700;margin-top:6px">Health Left:</div><div id="finalHp">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Drop these images in the same folder as this HTML (exact names): <code>IMG_8659.JPG</code> (rescuer), <code>smw1.jpg</code> (ice‑cream giver), <code>elephant.jpg</code> (baby elephant), and <code>icecream.jpg</code> (reward image). Works on desktop & mobile.
+  </footer>
+</div>
+
+<script>
+// --- Asset paths (place files next to the HTML) ---
+const ASSETS = {
+  rescuer: 'IMG_8659.JPG',
+  giver:   'smw1.jpg',
+  elephant:'elephant.jpg',
+  ice:     'icecream.jpg'
+};
+
+// --- Tiny sound generator (web audio beeps) ---
+let audioCtx;let muted=false;
+function beep(freq=600, time=0.05, type='square', vol=0.02){
+  if(muted) return; if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  const o=audioCtx.createOscillator(); const g=audioCtx.createGain();
+  o.type=type; o.frequency.value=freq; g.gain.value=vol; o.connect(g); g.connect(audioCtx.destination);
+  o.start(); g.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime+time); o.stop(audioCtx.currentTime+time);
+}
+
+// --- Helpers ---
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function now(){return performance.now();}
+function lerp(a,b,t){return a+(b-a)*t;}
+
+// --- Core game state ---
+const Game=(()=>{
+  const canvas=document.getElementById('game');
+  const ctx=canvas.getContext('2d');
+  const fx=document.getElementById('fx');
+  const fxc=fx.getContext('2d');
+  const DPR=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+
+  // Resize canvas to device
+  function fit(){
+    const w=1280,h=720; canvas.width=w*DPR; canvas.height=h*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+    fx.width=w*DPR; fx.height=h*DPR; fxc.setTransform(DPR,0,0,DPR,0,0);
+  }
+  fit(); addEventListener('resize',fit);
+
+  // HUD
+  const hpEl=document.getElementById('hp');
+  const timerEl=document.getElementById('timer');
+  const objectiveEl=document.getElementById('objective');
+  const toast=document.getElementById('toast');
+
+  // Modals
+  const startModal=document.getElementById('start');
+  const gameoverModal=document.getElementById('gameover');
+  const winModal=document.getElementById('win');
+
+  // Images
+  const imgRescuer=new Image(); imgRescuer.src=ASSETS.rescuer;
+  const imgGiver=new Image();   imgGiver.src=ASSETS.giver;
+  const imgEle=new Image();     imgEle.src=ASSETS.elephant;
+
+  // Map: bounds & obstacles & hazards
+  const world={ w:1280,h:720,
+    obstacles:[ // static walls/trees/rocks (x,y,w,h)
+      {x:0,y:680,w:1280,h:40}, {x:0,y:0,w:1280,h:40}, {x:0,y:0,w:40,h:720}, {x:1240,y:0,w:40,h:720},
+      {x:260,y:160,w:220,h:40},{x:540,y:200,w:40,h:200},{x:180,y:520,w:400,h:40},
+      {x:830,y:110,w:300,h:40},{x:920,y:110,w:40,h:280}, {x:860,y:470,w:300,h:40},
+    ],
+    hazards:[ // touching deals damage
+      {x:480,y:520,w:120,h:18,type:'spikes'},
+      {x:620,y:380,w:120,h:18,type:'spikes'},
+    ],
+    guards:[ // moving hazards
+      {x:700,y:540,w:28,h:28,ax:640,bx:940,dir:1,speed:100},
+      {x:300,y:240,w:28,h:28,ay:180,by:360,dir:1,speed:90,vertical:true},
+    ]
+  };
+
+  // Entities
+  const player={x:100,y:600,w:44,h:60,spd:220, vx:0,vy:0, img:imgRescuer, hp:100, rescuing:false,rescued:false, rewarded:false};
+  const elephant={x:1020,y:360,w:120,h:90,img:imgEle,trapped:true};
+  const giver={x:1100,y:560,w:64,h:84,img:imgGiver};
+
+  // Input
+  const keys={};
+  addEventListener('keydown',e=>{keys[e.code]=true; if(e.code==='KeyM') toggleMute();});
+  addEventListener('keyup',e=>{keys[e.code]=false});
+
+  // Mobile inputs
+  document.getElementById('controls').addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
+  document.querySelectorAll('#controls .btn').forEach(b=>{
+    const k=b.dataset.k;
+    b.addEventListener('touchstart',()=>{keys[k]=true;});
+    b.addEventListener('touchend',()=>{keys[k]=false;});
+    b.addEventListener('mousedown',()=>{keys[k]=true;});
+    b.addEventListener('mouseup',()=>{keys[k]=false;});
+    b.addEventListener('mouseleave',()=>{keys[k]=false;});
+  });
+
+  // Timer
+  let startTime=0, elapsed=0, running=false;
+
+  function reset(){
+    player.x=100; player.y=600; player.vx=player.vy=0; player.hp=100; player.rescuing=false; player.rescued=false; player.rewarded=false;
+    elephant.trapped=true; running=false; elapsed=0; startTime=0; hide(gameoverModal); hide(winModal); show(startModal);
+    objectiveEl.textContent='Objective: Find and rescue the baby elephant';
+    updateHud();
+    clearFX();
+  }
+
+  function start(){ hide(startModal); running=true; startTime=now(); }
+
+  function gameOver(){ running=false; show(gameoverModal); }
+
+  function win(){ running=false; show(winModal); document.getElementById('finalTime').textContent=fmtTime(elapsed); document.getElementById('finalHp').textContent=player.hp; fireConfetti();}
+
+  function fmtTime(ms){ const s=Math.floor(ms/1000); const m=(s/60)|0; const ss=String(s%60).padStart(2,'0'); return `${String(m).padStart(2,'0')}:${ss}` }
+
+  function updateHud(){ hpEl.textContent=`❤️ ${player.hp}`; timerEl.textContent=`⏱️ ${fmtTime(elapsed)}`; }
+
+  function show(el){ el.style.display='flex'; }
+  function hide(el){ el.style.display='none'; }
+
+  // Collisions
+  function rectsIntersect(a,b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+
+  function collideWithWorld(nx,ny){
+    const test={x:nx,y:ny,w:player.w,h:player.h};
+    for(const o of world.obstacles){ if(rectsIntersect(test,o)){ return true; } }
+    return false;
+  }
+
+  // FX — simple confetti
+  const confetti=[];
+  function fireConfetti(){
+    confetti.length=0; for(let i=0;i<200;i++){ confetti.push({x:640,y:200, vx:(Math.random()*2-1)*4, vy:(Math.random()*-3-2), life:Math.random()*120+60}); }
+  }
+  function clearFX(){ fxc.clearRect(0,0,1280,720); confetti.length=0; }
+
+  function update(dt){
+    if(!running) return;
+    elapsed = now()-startTime; updateHud();
+
+    // Movement input
+    const ax = (keys['KeyA']||keys['ArrowLeft']? -1:0) + (keys['KeyD']||keys['ArrowRight']? 1:0);
+    const ay = (keys['KeyW']||keys['ArrowUp']? -1:0) + (keys['KeyS']||keys['ArrowDown']? 1:0);
+    const spd = player.spd * (player.rescuing?0.3:1);
+    const step = spd*dt;
+
+    // Try move X then Y with collision resolution
+    let nx=player.x+ax*step, ny=player.y;
+    if(!collideWithWorld(nx,ny)) player.x=nx; else { while(ax!==0 && !collideWithWorld(player.x+Math.sign(ax),ny)) player.x+=Math.sign(ax); }
+    nx=player.x; ny=player.y+ay*step;
+    if(!collideWithWorld(nx,ny)) player.y=ny; else { while(ay!==0 && !collideWithWorld(nx,player.y+Math.sign(ay))) player.y+=Math.sign(ay); }
+
+    // Clamp to world
+    player.x=clamp(player.x,40,1280-40-player.w); player.y=clamp(player.y,40,720-40-player.h);
+
+    // Hazards
+    for(const h of world.hazards){ if(rectsIntersect(player,h)){ player.hp=Math.max(0,player.hp-25*dt); if(((now()|0)%120)<60) beep(200,0.03,'sawtooth',0.01); if(player.hp<=0) gameOver(); } }
+
+    // Guards movement
+    for(const g of world.guards){
+      if(g.vertical){ g.y += g.dir*g.speed*dt; if(g.y<g.ay){g.y=g.ay;g.dir=1}else if(g.y>g.by){g.y=g.by;g.dir=-1} }
+      else { g.x += g.dir*g.speed*dt; if(g.x<g.ax){g.x=g.ax;g.dir=1}else if(g.x>g.bx){g.x=g.bx;g.dir=-1} }
+      if(rectsIntersect(player,g)){ player.hp=Math.max(0,player.hp-40*dt); if(player.hp<=0) gameOver(); }
+    }
+
+    // Rescue interaction
+    const nearEle = rectsIntersect(player,{x:elephant.x-10,y:elephant.y-10,w:elephant.w+20,h:elephant.h+20});
+    if(elephant.trapped && nearEle){ toast.style.display='block'; if(keys['KeyE']){ player.rescuing=true; rescueTimer += dt; if(rescueTimer>2){ elephant.trapped=false; player.rescuing=false; rescueTimer=0; objectiveEl.textContent='Objective: Meet smw1 to get your ice cream'; beep(880,0.06,'triangle',0.02); } }
+      else { player.rescuing=false; rescueTimer=0; }
+    } else { toast.style.display='none'; player.rescuing=false; rescueTimer=0; }
+
+    // Reward interaction
+    if(!elephant.trapped && !player.rewarded){
+      const nearGiver = rectsIntersect(player,{x:giver.x-10,y:giver.y-10,w:giver.w+20,h:giver.h+20});
+      if(nearGiver){ player.rewarded=true; win(); beep(660,0.05); setTimeout(()=>beep(990,0.06,'triangle',0.02),60); setTimeout(()=>beep(1320,0.08,'square',0.02),120); }
+    }
+  }
+
+  let rescueTimer=0;
+
+  function draw(){
+    // Clear
+    ctx.clearRect(0,0,1280,720);
+
+    // Background (simple parallax hills)
+    ctx.fillStyle='#0b1226'; ctx.fillRect(0,0,1280,720);
+    const grd=ctx.createLinearGradient(0,0,0,720); grd.addColorStop(0,'#0f1a39'); grd.addColorStop(1,'#0a0f1f'); ctx.fillStyle=grd; ctx.fillRect(0,0,1280,720);
+
+    // Decorative ground
+    ctx.fillStyle='rgba(255,255,255,.04)'; for(let i=0;i<40;i++){ ctx.fillRect(i*32,650+Math.sin(i*.7)*6,28,6); }
+
+    // Obstacles
+    ctx.fillStyle='rgba(255,255,255,.06)'; world.obstacles.forEach(o=>{ ctx.fillRect(o.x,o.y,o.w,o.h); });
+
+    // Hazards
+    for(const h of world.hazards){ ctx.fillStyle='rgba(255,90,90,.9)'; for(let i=0;i<h.w;i+=16){ ctx.beginPath(); ctx.moveTo(h.x+i,h.y+h.h); ctx.lineTo(h.x+i+8,h.y); ctx.lineTo(h.x+i+16,h.y+h.h); ctx.closePath(); ctx.fill(); } }
+
+    // Guards
+    ctx.fillStyle='rgba(255,255,255,.85)';
+    for(const g of world.guards){ ctx.fillRect(g.x,g.y,g.w,g.h); }
+
+    // Elephant (with a soft "cage" before rescue)
+    const e=elephant; ctx.drawImage(e.img,e.x,e.y,e.w,e.h);
+    if(e.trapped){ ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.lineWidth=3; for(let i=0;i<5;i++){ ctx.strokeRect(e.x-8+i*6,e.y-10,3,e.h+20); }
+      ctx.fillStyle='rgba(255,255,255,.08)'; ctx.fillRect(e.x-12,e.y-12,e.w+24,e.h+24);
+    }
+
+    // Giver (smw1)
+    const g=giver; ctx.drawImage(g.img,g.x,g.y,g.w,g.h);
+
+    // Player
+    const p=player; // shadow
+    ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(p.x+p.w/2,p.y+p.h,22,8,0,0,Math.PI*2); ctx.fill();
+    ctx.save(); ctx.beginPath(); // rounded frame for nicer crop
+    const r=8; ctx.roundRect(p.x,p.y,p.w,p.h,r); ctx.clip(); ctx.drawImage(p.img,p.x,p.y,p.w,p.h); ctx.restore();
+
+    // Rescue progress bar
+    if(p.rescuing){ const t=clamp(rescueTimer/2,0,1); const barW=160, barH=10; const bx=e.x+e.w/2-barW/2, by=e.y-18; ctx.fillStyle='rgba(255,255,255,.18)'; ctx.fillRect(bx,by,barW,barH); ctx.fillStyle='#6ee7ff'; ctx.fillRect(bx,by,barW*t,barH); }
+
+    // FX layer
+    fxc.clearRect(0,0,1280,720);
+    if(confetti.length){
+      for(const c of confetti){ c.x+=c.vx; c.vy+=0.08; c.y+=c.vy; c.life--; fxc.globalAlpha=Math.max(0,Math.min(1,c.life/60)); fxc.fillStyle=['#fff','#a7f3d0','#6ee7ff','#fde68a'][c.life%4]; fxc.fillRect(c.x,c.y,3,6); }
+    }
+  }
+
+  // Main loop
+  let last=now();
+  function loop(){ const t=now(); const dt=(t-last)/1000; last=t; update(dt); draw(); requestAnimationFrame(loop); }
+  requestAnimationFrame(loop);
+
+  function toggleMute(){ muted=!muted; }
+
+  // Expose API
+  return {start, reset, toggleMute};
+})();
+
+// Polyfill for roundRect on older browsers
+if(!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){
+    if(typeof r==='number') r={tl:r,tr:r,br:r,bl:r}; const {tl,tr,br,bl}=r;
+    this.beginPath(); this.moveTo(x+tl,y); this.lineTo(x+w-tr,y); this.quadraticCurveTo(x+w,y,x+w,y+tr);
+    this.lineTo(x+w,y+h-br); this.quadraticCurveTo(x+w,y+h,x+w-br,y+h); this.lineTo(x+bl,y+h); this.quadraticCurveTo(x,y+h,x,y+h-bl);
+    this.lineTo(x,y+tl); this.quadraticCurveTo(x,y,x+tl,y); this.closePath(); return this;
+  }
+}
+</script>
+</body>
+</html>
