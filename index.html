@@ -286,7 +286,7 @@ const Game=(()=>{
 
     // Rescue interaction
     const nearEle = rectsIntersect(player,{x:elephant.x-10,y:elephant.y-10,w:elephant.w+20,h:elephant.h+20});
-    if(elephant.trapped && nearEle){ toast.style.display='block'; if(keys['KeyE']){ player.rescuing=true; rescueTimer += dt; if(rescueTimer>2){ elephant.trapped=false; player.rescuing=false; rescueTimer=0; objectiveEl.textContent='Objective: Meet smw1 to get your ice cream'; beep(880,0.06,'triangle',0.02); } }
+    if(elephant.trapped && nearEle){ toast.style.display='block'; if(keys['KeyE']){ player.rescuing=true; rescueTimer += dt; if(rescueTimer>2){ elephant.trapped=false; player.rescuing=false; rescueTimer=0; objectiveEl.textContent='Objective: Meet Shihan to get your ice cream'; beep(880,0.06,'triangle',0.02); } }
       else { player.rescuing=false; rescueTimer=0; }
     } else { toast.style.display='none'; player.rescuing=false; rescueTimer=0; }
 
